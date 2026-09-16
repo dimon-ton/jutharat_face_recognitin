@@ -1,0 +1,7 @@
+.venv/
+.venv-linux/
+__pycache__/
+data/
+jutharat_face/
+results*/
+*.egg-info/

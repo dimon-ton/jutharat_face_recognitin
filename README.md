@@ -59,7 +59,9 @@ Output must be a **new folder**, separate from both input folders. For another r
 - `results/matches/`: copies of candidate photos, preserving album subfolders and original files.
 - `results/report.csv`: one row per album photo, with match status, detected face count, best distance, copied path, and any error. Open in Excel with UTF-8 support.
 
-The default threshold is `--tolerance 0.5`. Lower it (for example `0.45`) if incorrect people are included. Raise it cautiously if known photos are missed. A distance is **not a confidence percentage**. Any one detected face matching any reference makes the photo a candidate.
+Photos with more than eight detected faces are excluded, even if Kru Jutharat matches. The report marks them `too_many_faces` and records the face count. Photos with exactly eight faces remain eligible.
+
+The default threshold is `--tolerance 0.5`. Lower it (for example `0.45`) if incorrect people are included. Raise it cautiously if known photos are missed. A distance is **not a confidence percentage**. Within the eight-face limit, any one detected face matching any reference makes the photo a candidate.
 Try `--upsample 2` for small faces in group photos; this is slower. Blur, occlusion, lighting, and pose can cause missed or incorrect matches. Manually review results and some rejected photos before relying on them.
 
 Invalid reference photos stop the run before creating output. Unreadable album photos are recorded as errors and processing continues. Exit status is nonzero if errors occurred; completed results remain available. The tool never deletes source photos and refuses to reuse an existing output folder.

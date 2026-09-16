@@ -71,3 +71,57 @@ python -m unittest discover -s tests -v
 ```
 
 Tests use a fake recognition engine, so they do not require dlib. Real recognition accuracy must be tested separately with your consenting reference subject and representative album photos.
+
+## Filter out face masks with direct YOLO detection
+
+`filter_masks.py` runs a detector on each whole image. Any detected cloth,
+surgical, respirator, or valved mask excludes that image, including masks on
+other people in group photos. It uses the five-class pretrained
+[TFM YOLOv5 model](https://github.com/GibranBenitez/TFM_dataset).
+Ordinary YOLO weights do not detect face masks; the tool checks the model's
+class names and refuses a model with different classes.
+
+Set up a local [YOLOv5 v7.0](https://github.com/ultralytics/yolov5/tree/v7.0)
+checkout and its dependencies in your Python environment:
+
+```bash
+git clone --branch v7.0 --depth 1 https://github.com/ultralytics/yolov5.git vendor/yolov5
+python -m pip install -r vendor/yolov5/requirements.txt
+```
+
+Download the [authors' YOLOv5 weights](https://drive.google.com/file/d/1uAZioqd4Pvurl7eEiDawidve8FU0dFXA/view)
+from the TFM benchmark table. Extract the download if necessary and place the
+checkpoint at `models/tfm-yolo.pt`. Use the same Python environment for setup
+and execution (on Windows, replace `python` with `.\.venv\Scripts\python.exe`).
+The legacy TFM checkpoint's compatibility with this checkout and your installed
+PyTorch version must be checked with a real run; it has not been verified here.
+
+To filter masks independently of face recognition:
+
+```bash
+python filter_masks.py --album data/album --output results-masks --mask-weights models/tfm-yolo.pt --yolo-repo vendor/yolov5
+```
+
+- `results-masks/masked/`: copies of images containing any detected masked face.
+- `results-masks/no_mask_detected/`: copies of the remaining images.
+- `results-masks/report.csv`: status, mask labels, confidence scores, bounding boxes, and errors.
+
+Original photos remain untouched and subfolders are preserved. Errors are
+reported and excluded from both output categories. Output must be a new folder
+separate from the album. `no_mask_detected` means the detector found no mask;
+small, blurred, or occluded faces can still be missed. Review representative
+results and tune `--mask-confidence 0.5` (lower catches more candidates, higher
+reduces false positives). `--mask-size 1280` can help with small faces at a cost
+in speed. The standalone command defaults to CPU; use `--mask-device cuda:0`
+with a supported CUDA environment.
+
+To exclude masked photos before matching Kru Jutharat:
+
+```bash
+python filter_album.py --reference jutharat_face --album data/album --output results-unmasked --mask-weights models/tfm-yolo.pt --yolo-repo vendor/yolov5
+```
+
+The face-match report marks excluded photos `masked`. Masked reference photos
+stop the run before output is created. Without the two model arguments,
+`filter_album.py` retains its existing behavior. Tests cover filtering and
+error handling with fake detectors; real detection accuracy is not tested.

@@ -6,3 +6,5 @@ jutharat_face/
 test/
 results*/
 *.egg-info/
+vendor/
+models/

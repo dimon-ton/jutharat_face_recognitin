@@ -3,6 +3,7 @@ import math
 from pathlib import Path
 
 MASK_LABELS = {"cloth", "respirator", "surgical", "valved"}
+LABEL_ALIASES = {"none": "unmasked", "valve": "valved"}
 
 
 class MaskDetector:
@@ -19,7 +20,10 @@ class MaskDetector:
         self.model = torch.hub.load(str(repo), "custom", path=str(weights),
                                      source="local", device=device)
         names = self.model.names
-        labels = set(names.values() if isinstance(names, dict) else names)
+        self.names = {index: LABEL_ALIASES.get(label, label)
+                      for index, label in (names.items() if isinstance(names, dict)
+                                           else enumerate(names))}
+        labels = set(self.names.values())
         if labels != MASK_LABELS | {"unmasked"}:
             raise ValueError(f"Expected TFM masked-face classes, found {labels}.")
         self.model.conf = confidence
@@ -32,7 +36,7 @@ class MaskDetector:
             predictions = self.model(image, size=self.size).xyxy[0].cpu().tolist()
         masks = []
         for x1, y1, x2, y2, confidence, class_id in predictions:
-            label = self.model.names[int(class_id)]
+            label = self.names[int(class_id)]
             if not math.isfinite(confidence):
                 raise ValueError("Invalid mask confidence")
             if label in MASK_LABELS and confidence >= self.confidence:

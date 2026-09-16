@@ -2,10 +2,13 @@ import csv
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
+from types import SimpleNamespace
 
 from filter_masks import filter_masks
 from filter_album import filter_album
 from test_filter_album import FakeEngine
+from mask_detector import MaskDetector
 
 
 class FakeMaskDetector:
@@ -16,6 +19,23 @@ class FakeMaskDetector:
 
 
 class MaskTests(unittest.TestCase):
+    def test_official_checkpoint_label_aliases(self):
+        model = SimpleNamespace(names=["none", "surgical", "cloth", "respirator", "valve"])
+        torch = SimpleNamespace(hub=SimpleNamespace(load=lambda *args, **kwargs: model))
+        pillow = SimpleNamespace(Image=object(), ImageOps=object())
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "weights.pt").touch()
+            (root / "hubconf.py").touch()
+            with patch.dict("sys.modules", {"torch": torch, "PIL": pillow}):
+                detector = MaskDetector(root / "weights.pt", root)
+            self.assertEqual(detector.names[0], "unmasked")
+            self.assertEqual(detector.names[4], "valved")
+            model.names = ["person"]
+            with patch.dict("sys.modules", {"torch": torch, "PIL": pillow}):
+                with self.assertRaisesRegex(ValueError, "Expected TFM"):
+                    MaskDetector(root / "weights.pt", root)
+
     def test_separation_errors_and_originals(self):
         with tempfile.TemporaryDirectory() as temp:
             album, output = Path(temp) / "album", Path(temp) / "out"

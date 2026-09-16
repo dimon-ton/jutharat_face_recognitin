@@ -7,6 +7,7 @@ import shutil
 import sys
 
 EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+MAX_FACES = 8
 
 
 def image_files(folder):
@@ -67,7 +68,7 @@ def filter_album(reference, album, output, engine, tolerance=0.5, mask_detector=
     output.mkdir(parents=True, exist_ok=False)
     matches = output / "matches"
     matches.mkdir()
-    counts = {"match": 0, "no_match": 0, "no_face": 0, "error": 0}
+    counts = {"match": 0, "no_match": 0, "no_face": 0, "too_many_faces": 0, "error": 0}
     if mask_detector is not None:
         counts["masked"] = 0
     with (output / "report.csv").open("w", newline="", encoding="utf-8-sig") as report:
@@ -86,11 +87,14 @@ def filter_album(reference, album, output, engine, tolerance=0.5, mask_detector=
                     continue
                 faces = engine.encodings(path)
                 row["faces"] = len(faces)
-                distance = min((engine.distance(references, face) for face in faces), default=None)
-                if distance is not None and not math.isfinite(distance):
-                    raise ValueError("Invalid face distance")
-                row["best_distance"] = "" if distance is None else f"{distance:.6f}"
-                row["status"] = "no_face" if distance is None else "match" if distance <= tolerance else "no_match"
+                if len(faces) > MAX_FACES:
+                    row["status"] = "too_many_faces"
+                else:
+                    distance = min((engine.distance(references, face) for face in faces), default=None)
+                    if distance is not None and not math.isfinite(distance):
+                        raise ValueError("Invalid face distance")
+                    row["best_distance"] = "" if distance is None else f"{distance:.6f}"
+                    row["status"] = "no_face" if distance is None else "match" if distance <= tolerance else "no_match"
                 if row["status"] == "match":
                     destination = matches / relative
                     destination.parent.mkdir(parents=True, exist_ok=True)

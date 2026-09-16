@@ -4,6 +4,9 @@ Local Python tool based on [ageitgey/face_recognition](https://github.com/ageitg
 It finds **candidate whole photos containing Kru Jutharat**, including group photos.
 It does not crop out other people or access your LINE account.
 
+Albums can also be downloaded from Google Drive using `download_drive.py`,
+including on a VM before running face recognition. See the Google Drive section below.
+
 ## Prepare photos
 
 1. Obtain Kru Jutharat's consent and use only album photos you are authorized to process.
@@ -127,3 +130,107 @@ The face-match report marks excluded photos `masked`. Masked reference photos
 stop the run before output is created. Without the two model arguments,
 `filter_album.py` retains its existing behavior. Tests cover filtering and
 error handling with fake detectors; real detection accuracy is not tested.
+
+## Download Google Drive albums on a VM
+
+`download_drive.py` accepts a Drive folder URL or ID and downloads JPG, JPEG,
+PNG, WEBP, and BMP images recursively. It supports private folders accessible
+to the signed-in account and publicly shared folders. The Google API is used
+only to read Drive files; face recognition runs locally on the VM.
+
+### Google sign-in: authorize once, then run without a browser
+
+1. In a Google Cloud project, enable the **Google Drive API**, configure the
+   OAuth consent screen, and create an OAuth client with type **Desktop app**.
+   For an external app in Testing, add your Google account as a test user.
+   Follow [Google's setup guide](https://developers.google.com/workspace/drive/api/quickstart/python).
+2. Save the downloaded client JSON as `.secrets/drive-credentials.json` on
+   a trusted computer with a browser. Install the downloader dependencies and sign in:
+
+   ```bash
+   python -m pip install -r requirements-drive.txt
+   python download_drive.py --authorize-only
+   ```
+
+   On Windows, use your Python environment's executable, such as
+   `.\.venv\Scripts\python.exe`, in place of `python`.
+   This step does not download photos. The requested `drive.readonly` scope
+   permits reading all Drive files the account can access; the command retrieves
+   only the selected folder tree. A metadata-only scope cannot download images.
+3. Securely transfer `.secrets/drive-token.json` to the same relative path in
+   the VM checkout (for example, using SCP). The VM needs this token, not the
+   desktop client JSON. Protect it as a credential: it contains a refresh token.
+   On Linux, use `chmod 700 .secrets` and `chmod 600 .secrets/drive-token.json`.
+   The directory is ignored by Git.
+
+Normal runs refresh access automatically without opening a browser. If access
+is revoked or expires, repeat `--authorize-only` locally and transfer the new token.
+External OAuth apps in **Testing** receive refresh tokens that expire after
+seven days for this scope. For ongoing VM operation, configure an appropriate
+production/internal OAuth app or use the service-account option below.
+See [Google's refresh-token expiration rules](https://developers.google.com/identity/protocols/oauth2#expiration).
+
+### Install and run on a Linux VM
+
+From the repository root, install the native build prerequisites and both sets
+of Python dependencies (the downloader alone does not require dlib):
+
+```bash
+sudo apt update
+sudo apt install python3-venv python3-dev build-essential cmake
+python3 -m venv .venv-linux
+.venv-linux/bin/python -m pip install --upgrade pip
+.venv-linux/bin/python -m pip install -r requirements.txt -r requirements-drive.txt
+```
+
+Place the consenting subject's reference photos in `jutharat_face/`, then run:
+
+```bash
+.venv-linux/bin/python download_drive.py \
+  --folder "https://drive.google.com/drive/folders/FOLDER_ID" \
+  --output data/album && \
+.venv-linux/bin/python filter_album.py \
+  --reference jutharat_face --album data/album --output results
+```
+
+The `&&` starts recognition only if the download completes without reported errors.
+Use new album and results directories for every run, including scheduled jobs;
+existing destinations are refused. This is a snapshot download, not incremental
+synchronization. For cron/systemd, use absolute paths and set the working directory
+to the repository root. `--token` can point to a credential outside the checkout.
+
+Subfolders are preserved. Names incompatible with local filesystems are sanitized;
+duplicate names receive numeric suffixes. `download_report.csv` records original
+Drive names and IDs, local paths, skipped items, and errors. Non-image files,
+unsupported image formats such as HEIC, and Drive shortcuts are skipped. Known
+image MIME types supply an extension when the name lacks a supported one. Use
+`--no-recursive` to restrict downloads to the selected folder's immediate files.
+An empty folder produces an empty report. Failed downloads remove partial files,
+keep completed images, and return a nonzero exit status. Review the report before
+using partial results; retry with a fresh output directory.
+
+### Alternative: service-account authentication
+
+For an unattended VM, create a service account in a project with the Drive API
+enabled. Share the album folder with its email address as **Viewer**, with downloads
+allowed. Organization sharing restrictions may require administrator assistance.
+Google documents [direct folder sharing with service accounts](https://developers.google.com/workspace/guides/create-credentials).
+
+```bash
+.venv-linux/bin/python download_drive.py --auth service-account \
+  --credentials .secrets/service-account.json \
+  --folder "FOLDER_ID" --output data/album
+```
+
+Without `--credentials`, this mode uses Application Default Credentials, including
+`GOOGLE_APPLICATION_CREDENTIALS` or a configured attached VM identity. That identity
+must have Drive read scope and access to the folder; default Google Cloud scopes
+alone may not include Drive. See [ADC setup](https://cloud.google.com/docs/authentication/application-default-credentials).
+Keep JSON keys out of Git and restrict them to the VM user.
+
+### Downloader tests
+
+Run `python -m unittest discover -s tests -v`. Fake Drive responses exercise folder
+traversal, pagination, filenames, reports, and failure handling without network
+access. Real Google authorization and downloading require your credentials and
+an accessible Drive folder; they are not validated by those tests.

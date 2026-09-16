@@ -8,3 +8,8 @@ results*/
 *.egg-info/
 vendor/
 models/
+.secrets/
+credentials.json
+token.json
+client_secret*.json
+*service-account*.json
